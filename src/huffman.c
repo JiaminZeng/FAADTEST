@@ -31,7 +31,6 @@
 #include <stdlib.h>
 
 #include "common.h"
-#include "structs.h"
 
 #ifdef ANALYSIS
 #include <stdio.h>
@@ -134,8 +133,9 @@ int hcb_2_quad_table_size[] = {0, 114, 86, 0, 185, 0, 0, 0, 0, 0, 0, 0};
 int hcb_2_pair_table_size[] = {0, 0, 0, 0, 0, 0, 126, 0, 83, 0, 210, 373};
 int hcb_bin_table_size[] = {0, 0, 0, 161, 0, 161, 0, 127, 0, 337, 0, 0};
 
-static INLINE void flush_temp_stego(StegaCxtData *tsp, int cb, int bits_cur,
+static INLINE void flush_temp_stego(FAADstegoCxtData *tsp, int cb, int bits_cur,
                                     int16_t *sp, int len) {
+    // 对于1，2，5和6号码书
     for (int i = 0; i < len; i++) {
         tsp->ttype[tsp->tnum] = 1;
         tsp->tmsg[tsp->tnum] = sp[i] < 0 ? 1 : 0;
@@ -145,30 +145,36 @@ static INLINE void flush_temp_stego(StegaCxtData *tsp, int cb, int bits_cur,
 }
 
 static INLINE void huffman_sign_bits(bitfile *ld, int16_t *sp, uint8_t len, uint8_t cb) {
+    // 对于3，4，7，8，9，10号码书
     uint8_t i;
-    StegaCxtData *tsp = ld->sp;
+    FAADstegoCxtData *tsp = ld->sp;
     for (i = 0; i < len; i++) {
-        tsp->ttype[tsp->tnum] = 5;
-        tsp->tmsg[tsp->tnum] = 0;
-        tsp->tbitsinfo[tsp->tnum] = cb * 10 + i;
-        tsp->tbitidx[tsp->tnum] = ld->bits_cur;
+        if (cb != 11) {
+            tsp->ttype[tsp->tnum] = 5;
+            tsp->tmsg[tsp->tnum] = 0;
+            tsp->tbitsinfo[tsp->tnum] = cb * 10 + i;
+            tsp->tbitidx[tsp->tnum] = ld->bits_cur;
+        }
         if (sp[i]) {
             if (faad_get1bit(ld DEBUGVAR(1, 5, "huffman_sign_bits(): sign bit")) &
                 1) {
-                tsp->tmsg[tsp->tnum] = 1;
+                if (cb != 11)
+                    tsp->tmsg[tsp->tnum] = 1;
                 sp[i] = -sp[i];
             }
         }
-        tsp->tnum++;
+        if (cb != 11)
+            tsp->tnum++;
     }
 }
 
 static INLINE int16_t huffman_getescape(bitfile *ld, int16_t sp) {
+    // 对于11号码书
     uint8_t neg, i;
     int16_t j;
     int16_t off;
 
-    StegaCxtData *tsp = ld->sp;
+    FAADstegoCxtData *tsp = ld->sp;
 
     if (sp < 0) {
         if (sp != -16) return sp;
@@ -189,14 +195,14 @@ static INLINE int16_t huffman_getescape(bitfile *ld, int16_t sp) {
     // 取i位
     off = (int16_t) faad_getbits(ld,
                                  i DEBUGVAR(1, 9, "huffman_getescape(): escape"));
-    // 00001 = 17
-    // 00010 = 18
-
-    if (off > 1) {  // 不使用16和17
+    // 00001 = 16
+    // 00010 = 17
+    //
+    if (off > 1) {  // 不使用15和16
         tsp->tmsg[tsp->tnum] = off % 2;
         tsp->ttype[tsp->tnum] = 2;
-        tsp->tbitsinfo[tsp->tnum] = 1;
-        tsp->tbitidx[tsp->tnum] = ld->bits_cur - 1;  // 前一个
+        tsp->tbitsinfo[tsp->tnum] = 110;
+        tsp->tbitidx[tsp->tnum++] = ld->bits_cur - 1;  // 前一个
     }
     j = off | (1 << i);
     if (neg) j = -j;
@@ -319,7 +325,6 @@ static uint8_t huffman_2step_pair_sign(uint8_t cb, bitfile *ld, int16_t *sp) {
 static uint8_t huffman_binary_quad(uint8_t cb, bitfile *ld, int16_t *sp) {
     uint16_t offset = 0;
 
-    int bits_cur = ld->bits_cur;
     // 第三个码书
     while (!hcb3[offset].is_leaf) {
         uint8_t b = faad_get1bit(ld DEBUGVAR(1, 255, "huffman_spectral_data():3"));

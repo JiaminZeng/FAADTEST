@@ -205,7 +205,7 @@ long NeAACDecInit(NeAACDecHandle hpDecoder, unsigned char *buffer,
     adif_header adif;
     adts_header adts;
     NeAACDecStruct *hDecoder = (NeAACDecStruct *) hpDecoder;
-    hDecoder->sp = (StegaCxtData *) sp;
+    hDecoder->sp = (FAADstegoCxtData *) sp;
     if ((hDecoder == NULL) || (samplerate == NULL) || (channels == NULL))
         return -1;
 
@@ -679,11 +679,6 @@ void *NeAACDecDecode(NeAACDecHandle hpDecoder,
                      unsigned long offset) {
     NeAACDecStruct *hDecoder = (NeAACDecStruct *) hpDecoder;
     hDecoder->sp->file_offset = offset;
-    // if (offset == 2800) {
-    //   FILE *sp = fopen("out.bin", "wb");
-    //   fwrite(buffer, 1UL, 100, sp);
-    //   fclose(sp);
-    // }
     return aac_frame_decode(hDecoder, hInfo, buffer, buffer_size, NULL, 0);
 }
 

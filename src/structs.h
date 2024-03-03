@@ -423,7 +423,7 @@ typedef struct {
 #endif
   latm_header latm_config;
   const unsigned char *cmes;
-  StegaCxtData *sp;
+  FAADstegoCxtData *sp;
 } NeAACDecStruct;
 
 #ifdef __cplusplus

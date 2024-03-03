@@ -62,7 +62,7 @@ typedef struct _bitfile {
     const void *buffer;
 
     uint32_t bits_cur;  // 新增加，抵多少
-    StegaCxtData *sp;
+    FAADstegoCxtData *sp;
 } bitfile;
 
 void faad_initbits(bitfile *ld, const void *buffer, const uint32_t buffer_size);

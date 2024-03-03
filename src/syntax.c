@@ -1972,7 +1972,7 @@ static uint8_t spectral_data(NeAACDecStruct *hDecoder, ic_stream *ics,
               return result;
             
             // 记录位置
-            for (int j = 0; j < inc; j++) ld->sp->tsepcpos[j + st] = p + i;
+            for (int j = 0; j < inc; j++) ld->sp->tsepcpos[j + st] = p + j;
             p += inc;
           }
           break;
@@ -1985,8 +1985,7 @@ static uint8_t spectral_data(NeAACDecStruct *hDecoder, ic_stream *ics,
   count = faad_get_ts() - count;
   hDecoder->spectral_cycles += count;
 #endif
-  // printf("%d \n", ld->sp->tnum);
-  flushStegaData(ld->sp, spectral_data);
+  haac_frame_flush(ld->sp, spectral_data);
   return 0;
 }
 

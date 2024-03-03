@@ -127,7 +127,7 @@ uint32_t seek_callback(void *user_data, uint64_t position) {
 }
 
 // ZJM
-static int decodeAACfile(char *aacfile, StegaCxtData *sp) {
+static int decodeAACfile(char *aacfile, FAADstegoCxtData *sp) {
     int tagsize;
     unsigned long sample_rate;
     unsigned char channels;
@@ -150,7 +150,7 @@ static int decodeAACfile(char *aacfile, StegaCxtData *sp) {
     memset(&b, 0, sizeof(aac_buffer));
 
     b.infile = fopen(aacfile, "rb");
-    if (b.infile == NULL) {
+    if (b.infile == nullptr) {
         /* unable to open file */
         fprintf(stderr, "Error opening file: %s\n", aacfile);
         return 1;
@@ -292,287 +292,359 @@ static int decodeAACfile(char *aacfile, StegaCxtData *sp) {
         }
         fill_buffer(&b);
         if (b.bytes_into_buffer == 0)
-            sample_buffer = NULL; /* to make sure it stops now */
-    } while (sample_buffer != NULL);
+            sample_buffer = nullptr; /* to make sure it stops now */
+    } while (sample_buffer != nullptr);
     NeAACDecClose(hDecoder);
     fclose(b.infile);
     if (b.buffer) free(b.buffer);
     return frameInfo.error;
 }
 
-static void modify(char *file, int cap, uint8_t *msg, int *bitidx, int *bitsinfo) {
-    FILE *sp = fopen(file, "rb+");
-    uint8_t byte;
-    for (int i = 0; i < cap; i++) {
-        int bytes_pos = bitidx[i] >> 3;
-        int left = bitidx[i] & 7;
-        int mid_right = 7 - left;
-        fseek(sp, bytes_pos, SEEK_SET);
-        if (bitsinfo[i] == 1) {
-            fread(&byte, 1UL, 1, sp);
-            fseek(sp, -1, SEEK_CUR);
-            // 2 5
+//static void modify(char *file, int cap, uint8_t *msg, int *bitidx, int *bitsinfo) {
+//    FILE *sp = fopen(file, "rb+");
+//    uint8_t byte;
+//    for (int i = 0; i < cap; i++) {
+//        int bytes_pos = bitidx[i] >> 3;
+//        int left = bitidx[i] & 7;
+//        int mid_right = 7 - left;
+//        fseek(sp, bytes_pos, SEEK_SET);
+//        if (bitsinfo[i] == 1) {
+//            fread(&byte, 1UL, 1, sp);
+//            fseek(sp, -1, SEEK_CUR);
+//            // 2 5
+//
+//            // 11100000 >> 111
+//            // 00000001
+//            if (((byte >> mid_right) & 1) != msg[i]) {
+//                byte ^= (1 << mid_right);
+//            }
+//            fwrite(&byte, 1UL, 1, sp);
+//
+//        } else {
+//            int oldword = bitsinfo[i] / 100;
+//            int cb = bitsinfo[i] % 100 / 10;
+//
+//            int z = oldword;
+//            int spe[4] = {0};
+//
+//            if (cb <= 2) {
+//                for (int j = 3; j >= 0; j--) {
+//                    spe[j] = oldword % 3 - 1;
+//                    oldword /= 3;
+//                }
+//            } else {
+//                spe[0] = oldword / 9 - 4;
+//                spe[1] = oldword % 9 - 4;
+//            }
+//
+//            while (1) {
+//                int idx = bitsinfo[i] % 10;  // 获取idx
+//                if (spe[idx] < 0 && msg[i] == 0 || spe[idx] > 0 && msg[i] == 1) {
+//                    spe[idx] = -spe[idx];  // 检查是否翻转
+//                }
+//                if ((i + 1 < cap && bitidx[i + 1] == bitidx[i]))
+//                    i++;
+//                else
+//                    break;
+//            }
+//
+//            int newword = 0;
+//            if (cb <= 2) {  // 计算新的offset
+//                for (int j = 0; j < 4; j++) {
+//                    newword = newword * 3 + spe[j];
+//                }
+//            } else {
+//                newword = spe[0] * 9 + spe[1];
+//            }
+//            newword += 40;
+//
+//            int totbits = 0;
+//            int val = 0;
+//
+//            int tb = 0;
+//            // 码书选择
+//            switch (cb) {  // 获取bit的数目和对应的值
+//                case 1:
+//                    tb = huff1[z][0];
+//                    totbits = huff1[newword][0];
+//                    val = huff1[newword][1];
+//                    break;
+//                case 2:
+//                    tb = huff2[z][0];
+//                    totbits = huff2[newword][0];
+//                    val = huff2[newword][1];
+//                    break;
+//                case 5:
+//                    tb = huff5[z][0];
+//                    totbits = huff5[newword][0];
+//                    val = huff5[newword][1];
+//                    break;
+//                case 6:
+//                    tb = huff6[z][0];
+//                    totbits = huff6[newword][0];
+//                    val = huff6[newword][1];
+//                    break;
+//                default:
+//                    break;
+//            }
+//
+//            // 写入流程
+//            while (totbits) {            // 如果还没有写完
+//                fread(&byte, 1UL, 1, sp);  // 读取一个byte
+//                fseek(sp, -1, SEEK_CUR);   // 退回一个byte
+//                int enable = 8 - left;
+//                if (totbits >= enable) {
+//                    // 保留左边left个                 保留左边enable
+//                    byte = ((byte >> enable) << enable) | (val >> (totbits - enable));
+//                    // 减去左边enable
+//                    val -= ((val >> (totbits - enable)) << (totbits - enable));
+//                    totbits -= enable;
+//                } else {
+//                    int mid = totbits;
+//                    int right = enable - mid;
+//                    // 保留左边left个                   // 保留右边right个
+//                    byte = ((byte >> enable) << enable) | (byte & ((1 << right) - 1)) |
+//                           (val << right);
+//                    totbits = 0;
+//                }
+//                fwrite(&byte, 1UL, 1, sp);
+//                left = 0;
+//            }
+//        }
+//    }
+//    fclose(sp);
+//}
 
-            // 11100000 >> 111
-            // 00000001
-            if (((byte >> mid_right) & 1) != msg[i]) {
-                byte ^= (1 << mid_right);
-            }
-            fwrite(&byte, 1UL, 1, sp);
-
-        } else {
-            int oldword = bitsinfo[i] / 100;
-            int cb = bitsinfo[i] % 100 / 10;
-
-            int z = oldword;
-            int spe[4] = {0};
-
-            if (cb <= 2) {
-                for (int j = 3; j >= 0; j--) {
-                    spe[j] = oldword % 3 - 1;
-                    oldword /= 3;
-                }
-            } else {
-                spe[0] = oldword / 9 - 4;
-                spe[1] = oldword % 9 - 4;
-            }
-
-            while (1) {
-                int idx = bitsinfo[i] % 10;  // 获取idx
-                if (spe[idx] < 0 && msg[i] == 0 || spe[idx] > 0 && msg[i] == 1) {
-                    spe[idx] = -spe[idx];  // 检查是否翻转
-                }
-                if ((i + 1 < cap && bitidx[i + 1] == bitidx[i]))
-                    i++;
-                else
-                    break;
-            }
-
-            int newword = 0;
-            if (cb <= 2) {  // 计算新的offset
-                for (int j = 0; j < 4; j++) {
-                    newword = newword * 3 + spe[j];
-                }
-            } else {
-                newword = spe[0] * 9 + spe[1];
-            }
-            newword += 40;
-
-            int totbits = 0;
-            int val = 0;
-
-            int tb = 0;
-            // 码书选择
-            switch (cb) {  // 获取bit的数目和对应的值
-                case 1:
-                    tb = huff1[z][0];
-                    totbits = huff1[newword][0];
-                    val = huff1[newword][1];
-                    break;
-                case 2:
-                    tb = huff2[z][0];
-                    totbits = huff2[newword][0];
-                    val = huff2[newword][1];
-                    break;
-                case 5:
-                    tb = huff5[z][0];
-                    totbits = huff5[newword][0];
-                    val = huff5[newword][1];
-                    break;
-                case 6:
-                    tb = huff6[z][0];
-                    totbits = huff6[newword][0];
-                    val = huff6[newword][1];
-                    break;
-                default:
-                    break;
-            }
-
-            // 写入流程
-            while (totbits) {            // 如果还没有写完
-                fread(&byte, 1UL, 1, sp);  // 读取一个byte
-                fseek(sp, -1, SEEK_CUR);   // 退回一个byte
-                int enable = 8 - left;
-                if (totbits >= enable) {
-                    // 保留左边left个                 保留左边enable
-                    byte = ((byte >> enable) << enable) | (val >> (totbits - enable));
-                    // 减去左边enable
-                    val -= ((val >> (totbits - enable)) << (totbits - enable));
-                    totbits -= enable;
-                } else {
-                    int mid = totbits;
-                    int right = enable - mid;
-                    // 保留左边left个                   // 保留右边right个
-                    byte = ((byte >> enable) << enable) | (byte & ((1 << right) - 1)) |
-                           (val << right);
-                    totbits = 0;
-                }
-                fwrite(&byte, 1UL, 1, sp);
-                left = 0;
-            }
-        }
-    }
-    fclose(sp);
-}
 
 int haac_get_capacity(char *in_audio, int *logic_bit_cap, int threshold, int part_mode, int payload) {
-    FAADStegaCxtData *sp = mp3_stega_init(FAADStegaMethod::HAAD);
-
-}
-
-int get_capacity(char *in_audio, int area, int threshold) {
-    int cap = 50000000;  // MAX
-    StegaCxtData *sp =
-            initStegaData(cap, area, threshold, NULL, NULL, NULL, NULL);
+    FAADstegoCxtData *sp = faad_stego_init(FAADStegoMethod::HAAC);
+    unsigned int cap = 1e8;
+    sp->STEP = FAADStegoStep::GET_CAP;
+    sp->haac_threshold = threshold;
+    sp->haac_part_mode = part_mode;
+    sp->cap_bytes = cap;
+    sp->cap_bits = cap * 8;
+    sp->payload = payload;
     decodeAACfile(in_audio, sp);
-    cap = sp->cur_inx;
-    closeStegaData(sp);
-    return cap;
+    *logic_bit_cap = static_cast<int>(sp->logic_bit_idx);
+    int ret = static_cast<int>(sp->useful_bit_idx / 8);
+    faad_stego_close(sp);
+    return ret;
 }
 
-int get_cost(char *in_audio, int cap, int area, int threshold, uint8_t *msg,
-             int *bitidx, int *bitsinfo, double *cost) {
-    StegaCxtData *sp =
-            initStegaData(cap, area, threshold, msg, bitidx, bitsinfo, cost);
+int haac_get_cost(char *in_audio, unsigned char *msg, double *cost, int cap, int threshold, int part_mode,
+                  int payload) {
+    FAADstegoCxtData *sp = faad_stego_init(FAADStegoMethod::HAAC);
+    sp->STEP = FAADStegoStep::GET_COST;
+    sp->haac_threshold = threshold;
+    sp->haac_part_mode = part_mode;
+    sp->cap_bytes = cap;
+    sp->cap_bits = cap * 8;
+    sp->msg = msg;
+    sp->cost = cost;
+    sp->payload = payload;
     decodeAACfile(in_audio, sp);
-    cap = sp->cur_inx;
-    closeStegaData(sp);
-    return cap;
+    int ret = static_cast<int>(sp->cur_byte_idx);
+    faad_stego_close(sp);
+    return ret;
 }
 
-int embed(char *in_audio, char *out_audio, int cap, int area, int threshold,
-          uint8_t *msg, int *bitidx, int *bitsinfo) {
-    FILE *input = fopen(in_audio, "rb");
-    FILE *output = fopen(out_audio, "wb+");
+int haac_embed(char *in_audio, char *out_audio, unsigned char *msg, int cap, int threshold, int part_mode,
+               int payload) {
+    FAADstegoCxtData *sp = faad_stego_init(FAADStegoMethod::HAAC);
+    sp->STEP = FAADStegoStep::EMBED;
+    sp->haac_threshold = threshold;
+    sp->haac_part_mode = part_mode;
+    sp->cap_bytes = cap;
+    sp->cap_bits = cap * 8;
+    sp->msg = msg;
+    sp->cur_byte = msg[0];
+    sp->payload = payload;
 
-    if (input == NULL || output == NULL) {
-        exit(-1);
-    }
+    sp->bitidx = new unsigned int[sp->cap_bits];
+    sp->bitsinfo = new int[sp->cap_bits];
+    sp->type = new uint8_t[sp->cap_bits];
 
-    int bread = 0;
-    int bwrite = 0;
-    int buffsize = 20480;
-    uint8_t *buf = (uint8_t *) malloc(buffsize * sizeof(uint8_t));
-    while ((bread = fread(buf, sizeof(uint8_t), buffsize, input)) != 0) {
-        bwrite = fwrite(buf, sizeof(uint8_t), bread, output);
-        if (bread != bwrite) exit(-1);
-    }
-    free(buf);
-    fclose(input);
-    fclose(output);
-
-    FILE *sp = fopen(out_audio, "rb+");
-
-    uint8_t byte;
-    for (int i = 0; i < cap; i++) {
-        int bytes_pos = bitidx[i] >> 3;
-        int left = bitidx[i] & 7;
-        int mid_right = 7 - left;
-        fseek(sp, bytes_pos, SEEK_SET);
-        if (bitsinfo[i] == 1) {
-            fread(&byte, 1UL, 1, sp);
-            fseek(sp, -1, SEEK_CUR);
-            if (((byte >> mid_right) & 1) != msg[i]) {
-                byte ^= (1 << mid_right);
-            }
-            fwrite(&byte, 1UL, 1, sp);
-        } else {
-            int oldword = bitsinfo[i] / 1000;
-            int cb = bitsinfo[i] % 1000 / 10;
-            int z = oldword;
-            int spe[4] = {0};
-
-            if (cb <= 2) {
-                for (int j = 3; j >= 0; j--) {
-                    spe[j] = oldword % 3 - 1;
-                    oldword /= 3;
-                }
-            } else {
-                spe[0] = oldword / 9 - 4;
-                spe[1] = oldword % 9 - 4;
-            }
-
-            while (1) {
-                int idx = bitsinfo[i] % 10;  // 获取idx
-                if (spe[idx] < 0 && msg[i] == 0 || spe[idx] > 0 && msg[i] == 1) {
-                    spe[idx] = -spe[idx];  // 检查是否翻转
-                }
-                if ((i + 1 < cap && bitidx[i + 1] == bitidx[i]))
-                    i++;
-                else
-                    break;
-            }
-
-            int newword = 0;
-            if (cb <= 2) {  // 计算新的offset
-                for (int j = 0; j < 4; j++) {
-                    newword = newword * 3 + spe[j];
-                }
-            } else {
-                newword = spe[0] * 9 + spe[1];
-            }
-            newword += 40;
-
-            int totbits = 0;
-            int val = 0;
-
-            // 码书选择
-            switch (cb) {  // 获取bit的数目和对应的值
-                case 1:
-                    totbits = huff1[newword][0];
-                    val = huff1[newword][1];
-                    break;
-                case 2:
-                    totbits = huff2[newword][0];
-                    val = huff2[newword][1];
-                    break;
-                case 5:
-                    totbits = huff5[newword][0];
-                    val = huff5[newword][1];
-                    break;
-                case 6:
-                    totbits = huff6[newword][0];
-                    val = huff6[newword][1];
-                    break;
-                default:
-                    break;
-            }
-
-            // 写入流程
-            while (totbits) {            // 如果还没有写完
-                fread(&byte, 1UL, 1, sp);  // 读取一个byte
-                fseek(sp, -1, SEEK_CUR);   // 退回一个byte
-                int enable = 8 - left;
-                if (totbits >= enable) {
-                    // 保留左边left个                 保留左边enable
-                    byte = ((byte >> enable) << enable) | (val >> (totbits - enable));
-                    // 减去左边enable
-                    val -= ((val >> (totbits - enable)) << (totbits - enable));
-                    totbits -= enable;
-                } else {
-                    int mid = totbits;
-                    int right = enable - mid;
-                    // 保留左边left个                   // 保留右边right个
-                    byte = ((byte >> enable) << enable) | (byte & ((1 << right) - 1)) |
-                           (val << right);
-                    totbits = 0;
-                }
-                fwrite(&byte, 1UL, 1, sp);
-                left = 0;
-            }
-        }
-    }
-    fclose(sp);
-    return 0;
-}
-
-int extract(char *in_audio, int cap, int area, int threshold, uint8_t *msg) {
-    StegaCxtData *sp = initStegaData(cap, area, threshold, msg, NULL, NULL, NULL);
     decodeAACfile(in_audio, sp);
-    cap = sp->cur_inx;
-    closeStegaData(sp);
-    return cap;
+    haac_embed_global(in_audio, out_audio, sp);
+
+    delete sp->bitidx;
+    delete sp->bitsinfo;
+    delete sp->type;
+
+    int ret = static_cast<int>(sp->cur_byte_idx);
+    faad_stego_close(sp);
+    return ret;
 }
+
+int haac_extract(char *in_audio, unsigned char *msg, int cap, int threshold, int part_mode, int payload) {
+    FAADstegoCxtData *sp = faad_stego_init(FAADStegoMethod::HAAC);
+    sp->STEP = FAADStegoStep::EXTRACT;
+    sp->haac_threshold = threshold;
+    sp->haac_part_mode = part_mode;
+    sp->cap_bytes = cap;
+    sp->cap_bits = cap * 8;
+    sp->msg = msg;
+    sp->payload = payload;
+    decodeAACfile(in_audio, sp);
+    int ret = static_cast<int>(sp->cur_byte_idx);
+    faad_stego_close(sp);
+    return ret;
+}
+//
+//int get_capacity(char *in_audio, int area, int threshold) {
+//    int cap = 50000000;  // MAX
+//    stegoCxtData *sp =
+//            initstegoData(cap, area, threshold, NULL, NULL, NULL, NULL);
+//    decodeAACfile(in_audio, sp);
+//    cap = sp->cur_inx;
+//    closestegoData(sp);
+//    return cap;
+//}
+//
+//int get_cost(char *in_audio, int cap, int area, int threshold, uint8_t *msg,
+//             int *bitidx, int *bitsinfo, double *cost) {
+//    stegoCxtData *sp =
+//            initstegoData(cap, area, threshold, msg, bitidx, bitsinfo, cost);
+//    decodeAACfile(in_audio, sp);
+//    cap = sp->cur_inx;
+//    closestegoData(sp);
+//    return cap;
+//}
+//
+//int embed(char *in_audio, char *out_audio, int cap, int area, int threshold,
+//          uint8_t *msg, int *bitidx, int *bitsinfo) {
+//    FILE *input = fopen(in_audio, "rb");
+//    FILE *output = fopen(out_audio, "wb+");
+//
+//    if (input == NULL || output == NULL) {
+//        exit(-1);
+//    }
+//
+//    int bread = 0;
+//    int bwrite = 0;
+//    int buffsize = 20480;
+//    uint8_t *buf = (uint8_t *) malloc(buffsize * sizeof(uint8_t));
+//    while ((bread = fread(buf, sizeof(uint8_t), buffsize, input)) != 0) {
+//        bwrite = fwrite(buf, sizeof(uint8_t), bread, output);
+//        if (bread != bwrite) exit(-1);
+//    }
+//    free(buf);
+//    fclose(input);
+//    fclose(output);
+//
+//    FILE *sp = fopen(out_audio, "rb+");
+//
+//    uint8_t byte;
+//    for (int i = 0; i < cap; i++) {
+//        int bytes_pos = bitidx[i] >> 3;
+//        int left = bitidx[i] & 7;
+//        int mid_right = 7 - left;
+//        fseek(sp, bytes_pos, SEEK_SET);
+//        if (bitsinfo[i] == 1) {
+//            fread(&byte, 1UL, 1, sp);
+//            fseek(sp, -1, SEEK_CUR);
+//            if (((byte >> mid_right) & 1) != msg[i]) {
+//                byte ^= (1 << mid_right);
+//            }
+//            fwrite(&byte, 1UL, 1, sp);
+//        } else {
+//            int oldword = bitsinfo[i] / 1000;
+//            int cb = bitsinfo[i] % 1000 / 10;
+//            int z = oldword;
+//            int spe[4] = {0};
+//
+//            if (cb <= 2) {
+//                for (int j = 3; j >= 0; j--) {
+//                    spe[j] = oldword % 3 - 1;
+//                    oldword /= 3;
+//                }
+//            } else {
+//                spe[0] = oldword / 9 - 4;
+//                spe[1] = oldword % 9 - 4;
+//            }
+//
+//            while (1) {
+//                int idx = bitsinfo[i] % 10;  // 获取idx
+//                if (spe[idx] < 0 && msg[i] == 0 || spe[idx] > 0 && msg[i] == 1) {
+//                    spe[idx] = -spe[idx];  // 检查是否翻转
+//                }
+//                if ((i + 1 < cap && bitidx[i + 1] == bitidx[i]))
+//                    i++;
+//                else
+//                    break;
+//            }
+//
+//            int newword = 0;
+//            if (cb <= 2) {  // 计算新的offset
+//                for (int j = 0; j < 4; j++) {
+//                    newword = newword * 3 + spe[j];
+//                }
+//            } else {
+//                newword = spe[0] * 9 + spe[1];
+//            }
+//            newword += 40;
+//
+//            int totbits = 0;
+//            int val = 0;
+//
+//            // 码书选择
+//            switch (cb) {  // 获取bit的数目和对应的值
+//                case 1:
+//                    totbits = huff1[newword][0];
+//                    val = huff1[newword][1];
+//                    break;
+//                case 2:
+//                    totbits = huff2[newword][0];
+//                    val = huff2[newword][1];
+//                    break;
+//                case 5:
+//                    totbits = huff5[newword][0];
+//                    val = huff5[newword][1];
+//                    break;
+//                case 6:
+//                    totbits = huff6[newword][0];
+//                    val = huff6[newword][1];
+//                    break;
+//                default:
+//                    break;
+//            }
+//
+//            // 写入流程
+//            while (totbits) {            // 如果还没有写完
+//                fread(&byte, 1UL, 1, sp);  // 读取一个byte
+//                fseek(sp, -1, SEEK_CUR);   // 退回一个byte
+//                int enable = 8 - left;
+//                if (totbits >= enable) {
+//                    // 保留左边left个                 保留左边enable
+//                    byte = ((byte >> enable) << enable) | (val >> (totbits - enable));
+//                    // 减去左边enable
+//                    val -= ((val >> (totbits - enable)) << (totbits - enable));
+//                    totbits -= enable;
+//                } else {
+//                    int mid = totbits;
+//                    int right = enable - mid;
+//                    // 保留左边left个                   // 保留右边right个
+//                    byte = ((byte >> enable) << enable) | (byte & ((1 << right) - 1)) |
+//                           (val << right);
+//                    totbits = 0;
+//                }
+//                fwrite(&byte, 1UL, 1, sp);
+//                left = 0;
+//            }
+//        }
+//    }
+//    fclose(sp);
+//    return 0;
+//}
+//
+//int extract(char *in_audio, int cap, int area, int threshold, uint8_t *msg) {
+//    stegoCxtData *sp = initstegoData(cap, area, threshold, msg, NULL, NULL, NULL);
+//    decodeAACfile(in_audio, sp);
+//    cap = sp->cur_inx;
+//    closestegoData(sp);
+//    return cap;
+//}
 
 
 //
@@ -586,8 +658,8 @@ int extract(char *in_audio, int cap, int area, int threshold, uint8_t *msg) {
 //  // int *bitsinfo = (int *)malloc(sizeof(int) * cap);
 //  // double *cost = (double *)malloc(sizeof(double) * cap);
 //
-//  // StegaCxtData *sp = initStegaData(cap, 3, 1, msg, bitidx, bitsinfo, cost);
-//  // // StegaCxtData *sp = initStegaData(cap, 3, 2, NULL, NULL, NULL, NULL);
+//  // stegoCxtData *sp = initstegoData(cap, 3, 1, msg, bitidx, bitsinfo, cost);
+//  // // stegoCxtData *sp = initstegoData(cap, 3, 2, NULL, NULL, NULL, NULL);
 //  // decodeAACfile(aacFileName, sp);
 //
 //  // printf("#### %d\n", sp->cur_inx);
@@ -595,11 +667,11 @@ int extract(char *in_audio, int cap, int area, int threshold, uint8_t *msg) {
 //  // for (int i = 0; i < sp->cur_inx; i++) {
 //  //   msg[i] = i * (i + 3) % 2;
 //  // }
-//  // closeStegaData(sp);
+//  // closestegoData(sp);
 //
 //  // modify("2.aac", cap, msg, bitidx, bitsinfo);
 //
-//  // sp = initStegaData(cap, 3, 1, msg, bitidx, bitsinfo, cost);
+//  // sp = initstegoData(cap, 3, 1, msg, bitidx, bitsinfo, cost);
 //
 //  // decodeAACfile("2.aac", sp);
 //
@@ -611,7 +683,7 @@ int extract(char *in_audio, int cap, int area, int threshold, uint8_t *msg) {
 //  // printf("#### %d\n", sp->cur_inx);
 //  // printf("\n");
 //
-//  // closeStegaData(sp);
+//  // closestegoData(sp);
 //
 //  // free(bitidx);
 //  // free(bitsinfo);
