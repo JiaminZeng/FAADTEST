@@ -175,6 +175,7 @@ static INLINE int16_t huffman_getescape(bitfile *ld, int16_t sp) {
     int16_t off;
 
     FAADstegoCxtData *tsp = ld->sp;
+    tsp->ttype[tsp->tnum] = 8;
 
     if (sp < 0) {
         if (sp != -16) return sp;
@@ -202,7 +203,7 @@ static INLINE int16_t huffman_getescape(bitfile *ld, int16_t sp) {
         tsp->tmsg[tsp->tnum] = off % 2;
         tsp->ttype[tsp->tnum] = 2;
         tsp->tbitsinfo[tsp->tnum] = 110;
-        tsp->tbitidx[tsp->tnum++] = ld->bits_cur - 1;  // 前一个
+        tsp->tbitidx[tsp->tnum] = ld->bits_cur - 1;  // 前一个
     }
     j = off | (1 << i);
     if (neg) j = -j;
@@ -309,7 +310,6 @@ static uint8_t huffman_2step_pair(uint8_t cb, bitfile *ld, int16_t *sp) {
     sp[1] = hcb_2_pair_table[cb][offset].y;
 
     if (cb == 6) flush_temp_stego(ld->sp, cb, bits_cur, sp, 2);
-
     return 0;
 }
 
@@ -440,7 +440,9 @@ uint8_t huffman_spectral_data(uint8_t cb, bitfile *ld, int16_t *sp) {
         case 11: {
             uint8_t err = huffman_2step_pair_sign(11, ld, sp);  // 符号单独出现 over
             sp[0] = huffman_getescape(ld, sp[0]);  // 溢出位
+            ld->sp->tnum += 1;
             sp[1] = huffman_getescape(ld, sp[1]);  // 溢出位
+            ld->sp->tnum += 1;
             return err;
         }
 #ifdef ERROR_RESILIENCE

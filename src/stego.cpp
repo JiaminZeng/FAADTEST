@@ -145,41 +145,13 @@ uint8_t *hcb_enable_embed_index[] = {nullptr,
                                      nullptr,
                                      nullptr};
 
-
-//stegoCxtData *initstegoData(int cap, int area, int threshold, uint8_t *msg,
-//                            int *bitidx, int *bitsinfo, double *cost) {
-//    // 全局部分
-//    stegoCxtData *sp = (stegoCxtData *) malloc(sizeof(stegoCxtData));
-//    sp->cap = cap;
-//    sp->cur_inx = 0;
-//
-//    sp->area = area;
-//    sp->threshold = threshold;
-//
-//    sp->msg = msg;
-//
-//    sp->bitidx = bitidx;
-//    sp->bitsinfo = bitsinfo;
-//    sp->cost = cost;
-//
-//    // 单帧部分，重复使用
-//    sp->tnum = 0;
-//
-//    sp->ttype = (uint8_t *) malloc(sizeof(uint8_t) * 1024);
-//    sp->tmsg = (uint8_t *) malloc(sizeof(uint8_t) * 1024);
-//    sp->tbitidx = (int *) malloc(sizeof(int) * 1024);
-//    sp->tbitsinfo = (int *) malloc(sizeof(int) * 1024);
-//    sp->tsepcpos = (int *) malloc(sizeof(int) * 1024);
-//    return sp;
-//}
-
 FAADstegoCxtData *faad_stego_init(FAADStegoMethod method) {
     auto *sp = new FAADstegoCxtData;
     memset(sp, 0, sizeof(FAADstegoCxtData));
     sp->METHOD = method;
     sp->ttype = new uint8_t[1024];
     sp->tmsg = new uint8_t[1024];
-    sp->tsepcpos = new uint8_t[1024];
+    sp->tsepcpos = new int[1024];
     sp->tbitidx = new unsigned int[1024];
     sp->tbitsinfo = new int[1024];
     return sp;
@@ -309,90 +281,6 @@ void haac_frame_flush(FAADstegoCxtData *sp, short *spectral_data) {
     }
     sp->tnum = 0;
 }
-//
-//void closestegoData(stegoCxtData *sp) {
-//    if (sp) {
-//        if (sp->ttype) free(sp->ttype);
-//        if (sp->tmsg) free(sp->tmsg);
-//        if (sp->tbitidx) free(sp->tbitidx);
-//        if (sp->tbitsinfo) free(sp->tbitsinfo);
-//        if (sp->tsepcpos) free(sp->tsepcpos);
-//        free(sp);
-//    }
-//}
-
-//void flushstegoData(stegoCxtData *sp, short *spectral_data) {
-//    // static int id = 1;
-//    // printf("ID %d: %d %d\n", id, sp->tnum, sp->cur_inx);
-//    if (sp->cur_inx >= sp->cap) return;
-//    for (int i = 0; i < sp->tnum && sp->cur_inx < sp->cap; i++) {
-//        if ((sp->ttype[i] & sp->area) == 0) {
-//            continue;
-//        }
-//        if (sp->ttype[i] & 1) {
-//            int pos = sp->tsepcpos[i];
-//            // 判断部分：
-//            // 对于bitsinfo非1的值，考察word的第一个值，检测整个码字是否可选
-//            // 如果不可选则进行跳过，1和2号码书有4个值，5和6码书有2个值
-//
-//            if (sp->tbitsinfo[i] > 1 && sp->tbitsinfo[i] % 10 == 0) {
-//                int cb = sp->tbitsinfo[i] % 100 / 10;
-//                int off = 40;
-//                if (cb <= 2) {
-//                    off += 27 * spectral_data[pos] + 9 * spectral_data[pos + 1] +
-//                           3 * spectral_data[pos + 2] + spectral_data[pos + 3];
-//                    for (int j = 0; j < 4; j++) {
-//                        sp->tbitsinfo[i + j] += 1000 * off;
-//                    }
-//                } else {
-//                    off += 9 * spectral_data[pos] + spectral_data[pos + 1];
-//                    for (int j = 0; j < 2; j++) {
-//                        sp->tbitsinfo[i + j] += 1000 * off;
-//                    }
-//                }
-//
-//                if (!hcb_enable_embed_index[cb][off]) {
-//                    if (cb <= 2)
-//                        i += 3;
-//                    else
-//                        i += 1;
-//                    continue;
-//                }
-//            }
-//
-//            int spe = spectral_data[pos];
-//            if (spe < 0) spe = -spe;
-//            if (spe && spe <= sp->threshold) {  // 符号位
-//                if (sp->msg) {
-//                    sp->msg[sp->cur_inx] = sp->tmsg[i];
-//                }
-//                if (sp->bitidx) {
-//                    sp->bitidx[sp->cur_inx] = sp->file_offset * 8 + sp->tbitidx[i];
-//                    sp->bitsinfo[sp->cur_inx] = sp->tbitsinfo[i];
-//
-//                    double alp = 1.3;
-//                    double cost = spe + alp;
-//                    if (pos - 1 >= 0) cost += abs(spectral_data[pos - 1]);
-//                    if (pos + 1 < 1024) cost += abs(spectral_data[pos + 1]);
-//                    sp->cost[sp->cur_inx] = cost / log(threshold[pos] + alp);
-//                }
-//                sp->cur_inx += 1;
-//            }
-//        } else if (sp->ttype[i] == 2) {  // 溢出位
-//            if (sp->msg) {
-//                sp->msg[sp->cur_inx] = sp->tmsg[i];
-//            }
-//            if (sp->bitidx) {
-//                sp->bitidx[sp->cur_inx] = sp->tbitidx[i] + sp->file_offset * 8;
-//                sp->bitsinfo[sp->cur_inx] = sp->tbitsinfo[i];
-//                sp->cost[sp->cur_inx] = 0.2;
-//            }
-//            sp->cur_inx += 1;
-//        }
-//    }
-//    // printf("ID %d: %d %d\n", id++, sp->tnum, sp->cur_inx);
-//    sp->tnum = 0;
-//}
 
 
 int haac_embed_global(char *in_audio, char *out_audio, FAADstegoCxtData *stegoCxt) {
@@ -427,8 +315,6 @@ int haac_embed_global(char *in_audio, char *out_audio, FAADstegoCxtData *stegoCx
     // 2.另外一种就是在编码过程，处理完每帧的内容直接进行修改即可
     uint8_t byte;
     for (int i = 0; i < stegoCxt->emb_bit_idx;) {
-        if (i == 57) { ;
-        }
         unsigned int bytes_pos = bitidx[i] >> 3;
         unsigned int left = bitidx[i] & 7;
         unsigned int mid_right = 7 - left;
@@ -462,23 +348,19 @@ int haac_embed_global(char *in_audio, char *out_audio, FAADstegoCxtData *stegoCx
                 int inx = abs(bitsinfo[i + inc]) % 10;
                 int msg = bitsinfo[i + inc] < 0 ? 1 : 0;
                 if (msg != get_1bit(stegoCxt)) {
-                    spe[inx] *= -1;
+                    spe[inx] = -spe[inx];
                 }
                 faad_flush_1bit(stegoCxt);
                 inc += 1;
             }
             i += inc;
 
-            int new_word = 0;
+            int new_word = 40;
             if (cb <= 2) {  // 计算新的offset
-                for (int j: spe) {
-                    new_word = new_word * 3 + j;
-                }
+                new_word += 27 * spe[0] + 9 * spe[1] + 3 * spe[2] + spe[3];
             } else {
-                new_word = spe[0] * 9 + spe[1];
+                new_word += spe[0] * 9 + spe[1];
             }
-            new_word += 40;
-
             if (new_word == old_word)continue;
             unsigned int tot_bits = 0;
             int val = 0;
