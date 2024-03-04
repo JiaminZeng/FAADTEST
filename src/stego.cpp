@@ -191,7 +191,8 @@ static void faad_flush_1bit(FAADstegoCxtData *stegoCfg) {
             stegoCfg->cur_byte_idx += 1;
         } else if (stegoCfg->STEP == FAADStegoStep::EMBED) {
             stegoCfg->cur_byte_idx += 1;
-            stegoCfg->cur_byte = stegoCfg->msg[stegoCfg->cur_byte_idx];
+            if (stegoCfg->cur_byte_idx < stegoCfg->cap_bytes)
+                stegoCfg->cur_byte = stegoCfg->msg[stegoCfg->cur_byte_idx];
         }
     }
 
@@ -334,9 +335,10 @@ int haac_embed_global(char *in_audio, char *out_audio, FAADstegoCxtData *stegoCx
             int cb = abs(bitsinfo[i]) % 1000 / 10;
             int spe[4] = {0};
             if (cb <= 2) {
+                int tp = old_word;
                 for (int j = 3; j >= 0; j--) {
-                    spe[j] = old_word % 3 - 1;
-                    old_word /= 3;
+                    spe[j] = tp % 3 - 1;
+                    tp /= 3;
                 }
             } else {
                 spe[0] = old_word / 9 - 4;
@@ -359,12 +361,15 @@ int haac_embed_global(char *in_audio, char *out_audio, FAADstegoCxtData *stegoCx
             if (cb <= 2) {  // 计算新的offset
                 new_word += 27 * spe[0] + 9 * spe[1] + 3 * spe[2] + spe[3];
             } else {
-                new_word += spe[0] * 9 + spe[1];
+                new_word += 9 * spe[0] + spe[1];
             }
-            if (new_word == old_word)continue;
+            if (new_word == old_word) {
+                continue;
+            }
             unsigned int tot_bits = 0;
             int val = 0;
             // 码书选择
+            int old_bits = 0;
             switch (cb) {  // 获取bit的数目和对应的值
                 case 1:
                     tot_bits = huff1[new_word][0];
